@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登录 / 注册 · 机甲纪元赛事官网</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="nav-slot"></div>
+  <main class="container">
+    <div class="auth-wrap">
+      <div class="card">
+        <div class="auth-tabs">
+          <button data-tab="login" class="active">登录</button>
+          <button data-tab="register">成员注册</button>
+          <button data-tab="forgot">忘记密码</button>
+        </div>
+
+        <!-- 登录 -->
+        <form id="form-login">
+          <div class="form-row">
+            <label>用户名</label>
+            <input type="text" name="username" placeholder="演示账号：admin / zhangsan" required>
+          </div>
+          <div class="form-row">
+            <label>密码</label>
+            <input type="password" name="password" placeholder="admin123 / member123" required>
+          </div>
+          <button class="btn primary" type="submit" style="width:100%">登 录</button>
+          <div class="auth-demo">
+            🔑 演示账号<br>
+            管理员：<code>admin / admin123</code>（发布新闻公告、维护排行榜、处理找回密码）<br>
+            成　员：<code>zhangsan / member123</code>（已通过报名）、<code>lisi / member123</code>（待审核）<br>
+            忘记密码：可用 <code>wangwu / member123</code> 测试申请流程
+          </div>
+        </form>
+
+        <!-- 注册 -->
+        <form id="form-register" style="display:none">
+          <div class="form-row">
+            <label>用户名 <span class="req">*</span></label>
+            <input type="text" name="username" placeholder="3-20 位字母、数字或下划线" required>
+          </div>
+          <div class="form-row">
+            <label>真实姓名 <span class="req">*</span></label>
+            <input type="text" name="realName" required>
+          </div>
+          <div class="form-grid">
+            <div class="form-row">
+              <label>邮箱</label>
+              <input type="email" name="email" placeholder="选填">
+            </div>
+            <div class="form-row">
+              <label>手机号</label>
+              <input type="tel" name="phone" placeholder="选填">
+            </div>
+          </div>
+          <div class="form-row">
+            <label>密码 <span class="req">*</span></label>
+            <input type="password" name="password" placeholder="至少 6 位" required>
+          </div>
+          <button class="btn primary" type="submit" style="width:100%">注册并进入成员中心</button>
+          <div class="form-hint">注册即视为同意赛事安全与公平竞赛公约，注册角色默认为「成员」。</div>
+        </form>
+
+        <!-- 忘记密码 -->
+        <form id="form-forgot" style="display:none">
+          <div class="callout info">
+            提交账号与联系方式后，由管理员在线下核实身份并在后台处理，处理进度请留意管理员回复。
+          </div>
+          <div class="form-row">
+            <label>用户名 <span class="req">*</span></label>
+            <input type="text" name="username" required>
+          </div>
+          <div class="form-row">
+            <label>联系方式（手机/邮箱）<span class="req">*</span></label>
+            <input type="text" name="contact" placeholder="用于管理员核实身份并回传结果" required>
+          </div>
+          <div class="form-row">
+            <label>情况说明</label>
+            <textarea name="reason" placeholder="例如：手机号已更换、无法接收验证码…"></textarea>
+          </div>
+          <button class="btn primary" type="submit" style="width:100%">提交找回申请</button>
+        </form>
+      </div>
+    </div>
+  </main>
+  <div id="footer-slot"></div>
+  <script src="/js/common.js"></script>
+  <script>
+    renderNav();
+    renderFooter();
+
+    const tabs = document.querySelectorAll('.auth-tabs button');
+    const forms = {
+      login: document.getElementById('form-login'),
+      register: document.getElementById('form-register'),
+      forgot: document.getElementById('form-forgot')
+    };
+    function switchTab(name) {
+      tabs.forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
+      Object.entries(forms).forEach(([k, f]) => (f.style.display = k === name ? '' : 'none'));
+      history.replaceState(null, '', '#' + name);
+    }
+    tabs.forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+    if (['register', 'forgot'].includes(location.hash.slice(1))) switchTab(location.hash.slice(1));
+
+    function formData(form) {
+      return Object.fromEntries(new FormData(form).entries());
+    }
+
+    function afterLogin(data) {
+      Auth.setSession(data.token, data.user);
+      toast('登录成功，欢迎回来 ' + (data.user.realName || data.user.username), 'success');
+      const params = new URLSearchParams(location.search);
+      const next = params.get('next');
+      setTimeout(() => {
+        if (next && next.startsWith('/')) location.href = next;
+        else location.href = data.user.role === 'admin' ? '/admin.html' : '/member.html';
+      }, 500);
+    }
+
+    forms.login.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = e.target.querySelector('button');
+      btn.disabled = true;
+      try {
+        const data = await apiPost('/api/auth/login', formData(e.target));
+        afterLogin(data);
+      } catch (err) {
+        toast(err.message, 'error');
+        btn.disabled = false;
+      }
+    });
+
+    forms.register.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = e.target.querySelector('button');
+      btn.disabled = true;
+      try {
+        const data = await apiPost('/api/auth/register', formData(e.target));
+        Auth.setSession(data.token, data.user);
+        toast('注册成功，已自动登录', 'success');
+        setTimeout(() => (location.href = '/member.html'), 600);
+      } catch (err) {
+        toast(err.message, 'error');
+        btn.disabled = false;
+      }
+    });
+
+    forms.forgot.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = e.target.querySelector('button');
+      btn.disabled = true;
+      try {
+        await apiPost('/api/password-resets', formData(e.target));
+        toast('申请已提交，请等待管理员线下核实处理', 'success');
+        e.target.reset();
+        switchTab('login');
+      } catch (err) {
+        toast(err.message, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

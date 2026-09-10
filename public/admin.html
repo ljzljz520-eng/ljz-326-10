@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>管理后台 · 机甲纪元赛事官网</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="nav-slot"></div>
+  <main class="container">
+    <div class="page-head">
+      <h1>🛠️ 管理后台</h1>
+      <p>发布新闻与公告、审核报名、维护排行榜、处理成员忘记密码申请。</p>
+    </div>
+
+    <div class="tabs" id="admin-tabs">
+      <button data-tab="dashboard" class="active">📊 总览</button>
+      <button data-tab="registrations">✅ 报名审核</button>
+      <button data-tab="posts">📰 新闻公告</button>
+      <button data-tab="rankings">🏅 排行榜维护</button>
+      <button data-tab="resets">🔑 忘记密码</button>
+    </div>
+
+    <section class="tab-panel active" id="tab-dashboard"><div id="dashboard" class="section" style="padding-top:0"></div></section>
+    <section class="tab-panel" id="tab-registrations">
+      <div class="toolbar">
+        <label class="muted" style="font-size:13px">状态：</label>
+        <select id="reg-filter">
+          <option value="">全部</option>
+          <option value="pending">待审核</option>
+          <option value="approved">已通过</option>
+          <option value="rejected">已驳回</option>
+        </select>
+        <button class="btn sm" id="btn-reload-reg">刷新</button>
+      </div>
+      <div id="reg-admin-list"></div>
+    </section>
+    <section class="tab-panel" id="tab-posts">
+      <div class="toolbar">
+        <label class="muted" style="font-size:13px">类型：</label>
+        <select id="post-filter">
+          <option value="">全部</option>
+          <option value="announcement">现场公告</option>
+          <option value="news">赛事新闻</option>
+        </select>
+        <button class="btn sm primary" id="btn-new-post">＋ 发布内容</button>
+        <button class="btn sm" id="btn-reload-post">刷新</button>
+      </div>
+      <div id="post-admin-list"></div>
+    </section>
+    <section class="tab-panel" id="tab-rankings">
+      <div class="toolbar">
+        <button class="btn sm primary" id="btn-new-rank">＋ 新增排名记录</button>
+        <button class="btn sm" id="btn-recompute">按积分重算名次</button>
+        <span class="muted" style="font-size:12.5px">保存成绩后系统自动按积分重排名次（同项目内）</span>
+      </div>
+      <div id="rank-admin-list"></div>
+    </section>
+    <section class="tab-panel" id="tab-resets">
+      <div class="toolbar">
+        <label class="muted" style="font-size:13px">状态：</label>
+        <select id="reset-filter">
+          <option value="">全部</option>
+          <option value="pending" selected>待处理</option>
+          <option value="done">已处理</option>
+          <option value="rejected">已驳回</option>
+        </select>
+        <button class="btn sm" id="btn-reload-reset">刷新</button>
+      </div>
+      <div id="reset-admin-list"></div>
+    </section>
+  </main>
+  <div id="footer-slot"></div>
+  <script src="/js/common.js"></script>
+  <script src="/js/admin.js"></script>
+</body>
+</html>

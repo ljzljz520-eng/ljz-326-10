@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>队伍排名 · 机甲纪元赛事官网</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="nav-slot"></div>
+  <main class="container">
+    <div class="page-head">
+      <h1>🏅 队伍排行榜</h1>
+      <p>小组赛积分实时更新，胜 3 分、平 1 分、负 0 分；同分依次比较相互战绩、净胜分。</p>
+    </div>
+    <div class="toolbar">
+      <label class="muted" style="font-size:13px">筛选项目：</label>
+      <select id="filter-category">
+        <option value="">全部项目</option>
+        <option>相扑机器人</option>
+        <option>迷宫机器人</option>
+        <option>任务挑战赛</option>
+      </select>
+      <span id="update-time" class="muted" style="font-size:12.5px"></span>
+    </div>
+    <div id="rank-boxes" class="section" style="padding-top:8px"></div>
+  </main>
+  <div id="footer-slot"></div>
+  <script src="/js/common.js"></script>
+  <script>
+    renderNav('rankings');
+    renderFooter();
+    const CATS = ['相扑机器人', '迷宫机器人', '任务挑战赛'];
+    const CAT_CLS = { '相扑机器人': 'cat', '迷宫机器人': 'cat-2', '任务挑战赛': 'cat-3' };
+    let all = [];
+
+    function tableHtml(rows) {
+      return `<div class="table-wrap"><table class="data">
+        <thead><tr><th>名次</th><th>队伍</th><th>场次</th><th>胜</th><th>平</th><th>负</th><th>积分</th><th>最近更新</th></tr></thead>
+        <tbody>${rows.map((r) => `
+          <tr>
+            <td><span class="rank-num ${r.rank <= 3 ? 'r' + r.rank : ''}">${r.rank}</span></td>
+            <td><b>${esc(r.teamName)}</b></td>
+            <td>${r.played}</td><td>${r.wins}</td><td>${r.draws}</td><td>${r.losses}</td>
+            <td><b style="color:var(--primary)">${r.score}</b></td>
+            <td class="muted">${fmtDate(r.updatedAt)}</td>
+          </tr>`).join('')}</tbody>
+      </table></div>`;
+    }
+
+    function render() {
+      const box = document.getElementById('rank-boxes');
+      const cats = CATS.filter((c) => all.some((r) => r.category === c));
+      let latest = '';
+      all.forEach((r) => { if (r.updatedAt > latest) latest = r.updatedAt; });
+      document.getElementById('update-time').textContent = latest ? '最近更新：' + fmtDate(latest) : '';
+      box.innerHTML = cats.map((c) => `
+        <div class="section" style="padding:8px 0">
+          <div class="section-head"><h2><span class="tag ${CAT_CLS[c]}">${c}</span></h2></div>
+          <div class="card">${tableHtml(all.filter((r) => r.category === c).sort((a, b) => a.rank - b.rank))}</div>
+        </div>`).join('') || '<div class="empty">暂无排名数据</div>';
+    }
+
+    async function load() {
+      const cat = document.getElementById('filter-category').value;
+      all = await apiGet('/api/rankings' + (cat ? '?category=' + encodeURIComponent(cat) : ''));
+      render();
+    }
+    document.getElementById('filter-category').addEventListener('change', load);
+    load().catch((e) => {
+      document.getElementById('rank-boxes').innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`;
+    });
+  </script>
+</body>
+</html>

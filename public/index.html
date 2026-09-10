@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>机甲纪元 · 机器人社团赛事官网</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="nav-slot"></div>
+
+  <header class="hero">
+    <div class="container">
+      <h1>2026 机器人社团赛事<br>创造 · 竞技 · 协作</h1>
+      <p>相扑机器人、迷宫机器人、任务挑战赛三大项目同步开赛。这里有完整赛程、参赛队伍、竞赛规则与现场公告——登录成员账号即可在线报名并跟踪审核进度。</p>
+      <div class="hero-actions">
+        <a class="btn primary" href="/login.html#register">立即报名参赛</a>
+        <a class="btn" href="/rankings.html">查看排行榜</a>
+        <a class="btn ghost" href="#rules">下载竞赛规则</a>
+      </div>
+      <div class="hero-stats" id="hero-stats">
+        <div class="stat"><b>—</b><span>参赛队伍</span></div>
+        <div class="stat"><b>3</b><span>比赛项目</span></div>
+        <div class="stat"><b>5</b><span>赛程节点</span></div>
+        <div class="stat"><b>—</b><span>报名队伍</span></div>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- 赛程 -->
+    <section class="section" id="schedule">
+      <div class="section-head">
+        <h2>📅 赛事日程</h2>
+        <span class="sub">时间与场地如有调整将在现场公告中通知</span>
+      </div>
+      <div class="card">
+        <div class="timeline" id="schedule-list"><div class="empty">赛程加载中…</div></div>
+      </div>
+    </section>
+
+    <!-- 队伍介绍 -->
+    <section class="section" id="teams">
+      <div class="section-head">
+        <h2>🏆 参赛队伍</h2>
+        <span class="sub">报名截止后将持续更新</span>
+      </div>
+      <div class="grid grid-3" id="team-list"><div class="empty">队伍加载中…</div></div>
+    </section>
+
+    <!-- 规则下载 + 公告 -->
+    <section class="section" id="rules">
+      <div class="grid grid-2">
+        <div>
+          <div class="section-head"><h2>📜 规则与资料下载</h2></div>
+          <div class="card" id="rule-list"><div class="empty">规则文件加载中…</div></div>
+        </div>
+        <div>
+          <div class="section-head">
+            <h2>📣 现场公告</h2>
+            <span class="sub">来自组委会的最新通知</span>
+          </div>
+          <div class="card" id="announce-list"><div class="empty">公告加载中…</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head"><h2>📰 赛事新闻</h2></div>
+      <div class="card" id="news-list"><div class="empty">新闻加载中…</div></div>
+    </section>
+  </main>
+
+  <div id="footer-slot"></div>
+  <script src="/js/common.js"></script>
+  <script src="/js/index.js"></script>
+</body>
+</html>

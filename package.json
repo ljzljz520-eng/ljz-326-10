@@ -1,0 +1,14 @@
+{
+  "name": "robo-cup-official",
+  "version": "1.0.0",
+  "description": "机器人社团赛事官网：赛程/队伍/规则/公告 + 成员报名审核 + 管理员内容与排行榜维护",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "node --watch server/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}
