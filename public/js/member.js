@@ -61,6 +61,55 @@ function fillMembers(list) {
   if (!list.length) { addMemberRow({ role: '队长' }); addMemberRow(); }
 }
 
+/* ---------- 报名附件 ---------- */
+const ALLOWED_EXT = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'zip', 'txt', 'doc', 'docx', 'xls', 'xlsx'];
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const MAX_ATTACHMENTS = 8;
+let keptAttachments = []; // 已上传并保留的附件（编辑时来自服务端）
+let pendingFiles = [];    // 本次新选择、待上传的文件
+const fileInput = document.getElementById('reg-files');
+const attListEl = document.getElementById('attachment-list');
+
+function renderAttachments() {
+  const chips = [
+    ...keptAttachments.map((f, i) =>
+      `<span class="file-chip">📎 ${esc(f.filename)}（${fmtSize(f.size)}）<button type="button" class="chip-x" data-kept="${i}" title="移除该附件">×</button></span>`),
+    ...pendingFiles.map((f, i) =>
+      `<span class="file-chip new">📎 ${esc(f.name)}（${fmtSize(f.size)}）<button type="button" class="chip-x" data-new="${i}" title="移除该附件">×</button></span>`)
+  ];
+  attListEl.innerHTML = chips.length
+    ? chips.join('')
+    : '<span class="muted" style="font-size:12.5px">尚未选择附件</span>';
+  attListEl.querySelectorAll('[data-kept]').forEach((b) =>
+    b.addEventListener('click', () => { keptAttachments.splice(Number(b.dataset.kept), 1); renderAttachments(); }));
+  attListEl.querySelectorAll('[data-new]').forEach((b) =>
+    b.addEventListener('click', () => { pendingFiles.splice(Number(b.dataset.new), 1); renderAttachments(); }));
+}
+
+fileInput.addEventListener('change', () => {
+  for (const f of fileInput.files) {
+    const ext = (f.name.includes('.') ? f.name.split('.').pop() : '').toLowerCase();
+    if (!ALLOWED_EXT.includes(ext)) { toast(`不支持的文件类型：${f.name}`, 'error'); continue; }
+    if (f.size > MAX_FILE_SIZE) { toast(`文件超过 5MB：${f.name}`, 'error'); continue; }
+    if (keptAttachments.length + pendingFiles.length >= MAX_ATTACHMENTS) {
+      toast(`附件最多 ${MAX_ATTACHMENTS} 个`, 'error');
+      break;
+    }
+    pendingFiles.push(f);
+  }
+  fileInput.value = '';
+  renderAttachments();
+});
+
+function readFileBase64(f) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',').pop());
+    r.onerror = () => reject(new Error('文件读取失败：' + f.name));
+    r.readAsDataURL(f);
+  });
+}
+
 /* ---------- 报名列表 + 表单 ---------- */
 const regListEl = document.getElementById('reg-list');
 const regFormWrap = document.getElementById('reg-form-wrap');
@@ -84,6 +133,7 @@ function regCard(r) {
     <table class="data" style="margin-top:6px">
       <tr><th style="width:80px">联系方式</th><td>${esc(r.contact)}</td><th style="width:80px">指导老师</th><td>${esc(r.advisor || '—')}</td></tr>
       <tr><th>队员名单</th><td colspan="3">${r.members.map((m) => `${esc(m.name)}（${esc(m.role)}${m.studentId ? '·' + esc(m.studentId) : ''}）`).join('、')}</td></tr>
+      ${(r.attachmentFiles && r.attachmentFiles.length) ? `<tr><th>报名附件</th><td colspan="3">${fileLinksHtml(r.attachmentFiles)}</td></tr>` : ''}
       ${r.materials ? `<tr><th>材料说明</th><td colspan="3">${esc(r.materials)}</td></tr>` : ''}
       ${r.reviewComment && r.status === 'approved' ? `<tr><th>审核意见</th><td colspan="3" style="color:var(--green)">${esc(r.reviewComment)}</td></tr>` : ''}
     </table>
@@ -105,6 +155,7 @@ async function loadRegistrations() {
   regListEl.querySelectorAll('[data-edit]').forEach((btn) =>
     btn.addEventListener('click', () => editReg(btn.dataset.edit))
   );
+  bindFileLinks(regListEl);
 
   const blocked = currentRegs.some((r) => r.status === 'pending' || r.status === 'approved');
   const pending = currentRegs.find((r) => r.status === 'pending');
@@ -129,6 +180,9 @@ function showForm(reg) {
   regForm.contact.value = reg ? reg.contact : (user.phone || '');
   regForm.advisor.value = reg ? reg.advisor : '';
   regForm.materials.value = reg ? reg.materials : '';
+  keptAttachments = reg ? (reg.attachmentFiles || []).slice() : [];
+  pendingFiles = [];
+  renderAttachments();
   fillMembers(reg ? reg.members : null);
   window.scrollTo({ top: regFormWrap.offsetTop - 80, behavior: 'smooth' });
 }
@@ -141,18 +195,35 @@ function editReg(id) {
 regForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const members = collectMembers();
-  const payload = {
-    teamName: regForm.teamName.value.trim(),
-    category: regForm.category.value,
-    contact: regForm.contact.value.trim(),
-    advisor: regForm.advisor.value.trim(),
-    materials: regForm.materials.value.trim(),
-    members
-  };
+  // 提交前预检（服务端仍会兜底校验）
+  const captains = members.filter((m) => m.role.includes('队长'));
+  if (captains.length !== 1) {
+    toast(captains.length === 0 ? '请将其中一名队员的分工填写为“队长”' : '队长只能有 1 名，请检查分工', 'error');
+    return;
+  }
+  if (!keptAttachments.length && !pendingFiles.length) {
+    toast('请至少上传 1 个报名附件（如安全责任书、器材清单）', 'error');
+    return;
+  }
   const id = regForm.id.value;
   const btn = document.getElementById('reg-submit-btn');
   btn.disabled = true;
   try {
+    // 先上传新附件，再连同保留的附件 id 一起提交
+    const attachmentIds = keptAttachments.map((f) => f.id);
+    for (const f of pendingFiles) {
+      const up = await apiPost('/api/uploads', { filename: f.name, dataBase64: await readFileBase64(f) });
+      attachmentIds.push(up.id);
+    }
+    const payload = {
+      teamName: regForm.teamName.value.trim(),
+      category: regForm.category.value,
+      contact: regForm.contact.value.trim(),
+      advisor: regForm.advisor.value.trim(),
+      materials: regForm.materials.value.trim(),
+      members,
+      attachments: attachmentIds
+    };
     if (id) {
       await apiPut('/api/registrations/' + id, payload);
       toast('报名资料已更新，等待审核', 'success');
@@ -160,6 +231,7 @@ regForm.addEventListener('submit', async (e) => {
       await apiPost('/api/registrations', payload);
       toast('报名提交成功，请等待审核', 'success');
     }
+    pendingFiles = [];
     await loadRegistrations();
   } catch (err) {
     toast(err.message, 'error');

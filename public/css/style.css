@@ -300,3 +300,17 @@ footer.site-footer {
   .nav-inner { flex-wrap: wrap; height: auto; padding: 8px 0; }
   .nav-links { order: 3; width: 100%; overflow-x: auto; }
 }
+
+/* 报名附件 */
+.file-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--bg-soft); border: 1px solid var(--line); border-radius: 999px;
+  padding: 4px 10px; margin: 4px 6px 0 0; font-size: 12.5px; color: var(--text);
+}
+.file-chip.new { border-color: rgba(56, 189, 248, .5); }
+.file-chip .chip-x {
+  border: none; background: none; color: var(--red); cursor: pointer;
+  font-size: 14px; line-height: 1; padding: 0 2px;
+}
+.file-link { color: var(--primary); text-decoration: none; }
+.file-link:hover { text-decoration: underline; }

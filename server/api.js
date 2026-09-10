@@ -14,6 +14,25 @@ const CATEGORIES = ['相扑机器人', '迷宫机器人', '任务挑战赛'];
 const POST_TYPES = ['announcement', 'news'];
 const REG_STATUSES = ['pending', 'approved', 'rejected'];
 
+/* 报名附件：类型白名单 / 大小上限 / MIME 映射 */
+const UPLOAD_EXT = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'zip', 'txt', 'doc', 'docx', 'xls', 'xlsx'];
+const UPLOAD_MIME = {
+  pdf: 'application/pdf',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  zip: 'application/zip',
+  txt: 'text/plain; charset=utf-8',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+};
+const MAX_UPLOAD_SIZE = 5 * 1024 * 1024; // 单文件 5MB
+const MAX_UPLOAD_BODY = 8 * 1024 * 1024; // base64 膨胀后的请求体上限
+const MAX_ATTACHMENTS = 8;
+
 /* ---------------- HTTP 辅助 ---------------- */
 
 function json(res, status, payload) {
@@ -33,14 +52,14 @@ function fail(res, status, code, message) {
   json(res, status, { ok: false, error: { code, message } });
 }
 
-function readBody(req) {
+function readBody(req, maxBytes = 1024 * 1024) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
     req.on('data', (c) => {
       size += c.length;
-      if (size > 1024 * 1024) {
-        reject(Object.assign(new Error('请求体过大（上限 1MB）'), { status: 413, code: 'PAYLOAD_TOO_LARGE' }));
+      if (size > maxBytes) {
+        reject(Object.assign(new Error(`请求体过大（上限 ${Math.round(maxBytes / 1024 / 1024)}MB）`), { status: 413, code: 'PAYLOAD_TOO_LARGE' }));
         req.destroy();
         return;
       }
@@ -349,6 +368,7 @@ function validateRegistration(b) {
   const advisor = String(b.advisor || '').trim();
   const materials = String(b.materials || '').trim();
   let members = b.members;
+  let attachments = b.attachments;
 
   if (!teamName) return { error: '请填写队伍名称' };
   if (teamName.length > 40) return { error: '队伍名称不超过 40 字' };
@@ -366,7 +386,76 @@ function validateRegistration(b) {
   if (members.length < 2 || members.length > 5) {
     return { error: '每队需 2-5 名队员' };
   }
-  return { value: { teamName, category, contact, advisor, materials, members } };
+
+  // 必须且只能有 1 名队长（分工中包含“队长”）
+  const captains = members.filter((m) => m.role.includes('队长'));
+  if (captains.length === 0) return { error: '队员名单中需指定 1 名队长（请将对应队员的分工填写为“队长”）' };
+  if (captains.length > 1) return { error: `队长只能有 1 名，当前填写了 ${captains.length} 名` };
+
+  // 队内不得重复（按姓名 / 学号）
+  const seenNames = new Set();
+  const seenSids = new Set();
+  for (const m of members) {
+    if (seenNames.has(m.name)) return { error: `队员名单中姓名重复：${m.name}` };
+    seenNames.add(m.name);
+    if (m.studentId) {
+      if (seenSids.has(m.studentId)) return { error: `队员名单中学号重复：${m.studentId}` };
+      seenSids.add(m.studentId);
+    }
+  }
+
+  // 报名附件：至少 1 个，最多 MAX_ATTACHMENTS 个（材料须为可审查的附件，而非纯文字说明）
+  if (!Array.isArray(attachments)) return { error: '报名附件格式不正确' };
+  attachments = [...new Set(attachments.map((x) => String(x || '').trim()).filter(Boolean))];
+  if (!attachments.length) return { error: '请至少上传 1 个报名附件（如安全责任书、器材清单）' };
+  if (attachments.length > MAX_ATTACHMENTS) return { error: `报名附件最多 ${MAX_ATTACHMENTS} 个` };
+
+  return { value: { teamName, category, contact, advisor, materials, members, attachments } };
+}
+
+// 附件归属校验：只能引用本人上传、且仍存在的附件
+function checkAttachments(ids, userId) {
+  for (const id of ids) {
+    const up = store.db.uploads.find((u) => u.id === id);
+    if (!up) return '报名附件不存在或已被删除，请重新上传';
+    if (up.userId !== userId) return '只能使用本人账号上传的附件';
+  }
+  return null;
+}
+
+// 跨队 / 跨项目查重：同一队员（按学号优先、姓名为辅）不得出现在其它有效报名中
+function memberConflicts(members, excludeRegId, statuses = ['pending', 'approved']) {
+  const active = store.db.registrations.filter(
+    (r) => r.id !== excludeRegId && statuses.includes(r.status)
+  );
+  const conflicts = [];
+  for (const m of members) {
+    const hit = active.find((r) =>
+      (r.members || []).some(
+        (x) => (m.studentId && x.studentId && x.studentId === m.studentId) || x.name === m.name
+      )
+    );
+    if (hit) conflicts.push({ member: m, reg: hit });
+  }
+  return conflicts;
+}
+
+function conflictMessage(conflicts) {
+  const statusText = { pending: '待审核', approved: '已通过' };
+  return (
+    conflicts
+      .map((c) => `队员「${c.member.name}」已出现在队伍「${c.reg.teamName}」的报名中（${statusText[c.reg.status] || c.reg.status}）`)
+      .join('；') + '；同一队员不得跨队、跨项目报名'
+  );
+}
+
+// 报名记录 + 附件元数据（用于前端展示与下载）
+function regWithFiles(reg) {
+  const attachmentFiles = (reg.attachments || [])
+    .map((id) => store.db.uploads.find((u) => u.id === id))
+    .filter(Boolean)
+    .map((u) => ({ id: u.id, filename: u.filename, size: u.size, uploadedAt: u.createdAt }));
+  return { ...reg, attachmentFiles };
 }
 
 // 提交报名资料
@@ -385,6 +474,12 @@ route('POST', '/api/registrations', 'member', async (req, res) => {
   const v = validateRegistration(b);
   if (v.error) return fail(res, 400, 'VALIDATION', v.error);
 
+  const attErr = checkAttachments(v.value.attachments, user.id);
+  if (attErr) return fail(res, 400, 'VALIDATION', attErr);
+
+  const conflicts = memberConflicts(v.value.members, null);
+  if (conflicts.length) return fail(res, 409, 'MEMBER_CONFLICT', conflictMessage(conflicts));
+
   const reg = {
     id: store.newId('reg'),
     userId: user.id,
@@ -398,7 +493,7 @@ route('POST', '/api/registrations', 'member', async (req, res) => {
   };
   store.db.registrations.push(reg);
   store.save();
-  ok(res, reg, 201);
+  ok(res, regWithFiles(reg), 201);
 });
 
 // 查看本人报名（含审核状态）
@@ -407,7 +502,8 @@ route('GET', '/api/registrations/me', 'member', (req, res) => {
   if (!user) return;
   const list = store.db.registrations
     .filter((r) => r.userId === user.id)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .map(regWithFiles);
   ok(res, list);
 });
 
@@ -422,9 +518,80 @@ route('PUT', '/api/registrations/:id', 'member', async (req, res, params) => {
   const b = await readBody(req);
   const v = validateRegistration({ ...reg, ...b });
   if (v.error) return fail(res, 400, 'VALIDATION', v.error);
+
+  const attErr = checkAttachments(v.value.attachments, user.id);
+  if (attErr) return fail(res, 400, 'VALIDATION', attErr);
+
+  const conflicts = memberConflicts(v.value.members, reg.id);
+  if (conflicts.length) return fail(res, 409, 'MEMBER_CONFLICT', conflictMessage(conflicts));
+
   Object.assign(reg, v.value, { updatedAt: store.now() });
   store.save();
-  ok(res, reg);
+  ok(res, regWithFiles(reg));
+});
+
+// 上传报名附件（JSON：{ filename, dataBase64 }，支持 dataURL 前缀）
+route('POST', '/api/uploads', 'member', async (req, res) => {
+  const user = requireAuth(req, res);
+  if (!user) return;
+  const b = await readBody(req, MAX_UPLOAD_BODY);
+
+  const rawName = String(b.filename || '').trim();
+  let dataBase64 = String(b.dataBase64 || '');
+  const comma = dataBase64.indexOf(',');
+  if (dataBase64.startsWith('data:') && comma !== -1) dataBase64 = dataBase64.slice(comma + 1);
+
+  if (!rawName) return fail(res, 400, 'VALIDATION', '缺少文件名');
+  const filename = rawName.split(/[\\/]/).pop().replace(/[\x00-\x1f]/g, '').trim().slice(0, 120);
+  const ext = (filename.includes('.') ? filename.split('.').pop() : '').toLowerCase();
+  if (!UPLOAD_EXT.includes(ext)) {
+    return fail(res, 400, 'VALIDATION', `不支持的文件类型，允许：${UPLOAD_EXT.join(' / ')}`);
+  }
+  if (!/^[A-Za-z0-9+/=\r\n]+$/.test(dataBase64)) {
+    return fail(res, 400, 'VALIDATION', '文件内容编码不正确（需为 base64）');
+  }
+  const buf = Buffer.from(dataBase64, 'base64');
+  if (!buf.length) return fail(res, 400, 'VALIDATION', '文件内容为空');
+  if (buf.length > MAX_UPLOAD_SIZE) {
+    return fail(res, 413, 'PAYLOAD_TOO_LARGE', `单个附件不能超过 ${Math.round(MAX_UPLOAD_SIZE / 1024 / 1024)}MB`);
+  }
+
+  const id = store.newId('up');
+  const rec = {
+    id,
+    userId: user.id,
+    filename,
+    storedName: `${id}.${ext}`,
+    size: buf.length,
+    mime: UPLOAD_MIME[ext] || 'application/octet-stream',
+    createdAt: store.now()
+  };
+  fs.writeFileSync(path.join(store.UPLOAD_DIR, rec.storedName), buf);
+  store.db.uploads.push(rec);
+  store.save();
+  ok(res, { id: rec.id, filename: rec.filename, size: rec.size, uploadedAt: rec.createdAt }, 201);
+});
+
+// 下载附件：本人或管理员可下载（供报名审核查阅）
+route('GET', '/api/uploads/:id/download', 'member', (req, res, params) => {
+  const user = requireAuth(req, res);
+  if (!user) return;
+  const up = store.db.uploads.find((u) => u.id === params.id);
+  if (!up) return fail(res, 404, 'NOT_FOUND', '附件不存在');
+  if (user.role !== 'admin' && up.userId !== user.id) {
+    return fail(res, 403, 'FORBIDDEN', '只能下载本人上传的附件');
+  }
+  const full = path.join(store.UPLOAD_DIR, up.storedName);
+  if (!fs.existsSync(full)) return fail(res, 404, 'FILE_MISSING', '附件文件已丢失，请重新上传');
+  const data = fs.readFileSync(full);
+  const filenameUtf8 = encodeURIComponent(up.filename).replace(/%20/g, ' ');
+  res.writeHead(200, {
+    'Content-Type': up.mime || 'application/octet-stream',
+    'Content-Disposition': `attachment; filename="file"; filename*=UTF-8''${filenameUtf8}`,
+    'Content-Length': data.length,
+    'Cache-Control': 'no-store'
+  });
+  res.end(data);
 });
 
 // 查看本人队伍排名（依据最近一条已通过报名的队名匹配排行榜）
@@ -483,7 +650,7 @@ route('GET', '/api/admin/registrations', 'admin', (req, res) => {
     .filter((r) => !status || r.status === status)
     .map((r) => {
       const u = store.db.users.find((x) => x.id === r.userId);
-      return { ...r, submitter: u ? { username: u.username, realName: u.realName, phone: u.phone, email: u.email } : null };
+      return { ...regWithFiles(r), submitter: u ? { username: u.username, realName: u.realName, phone: u.phone, email: u.email } : null };
     })
     .sort((a, b) => {
       const order = { pending: 0, rejected: 1, approved: 2 };
@@ -506,6 +673,12 @@ route('PUT', '/api/admin/registrations/:id/review', 'admin', async (req, res, pa
     return fail(res, 400, 'VALIDATION', '审核结论必须为 approved 或 rejected');
   }
   if (reg.status !== 'pending') return fail(res, 409, 'ALREADY_REVIEWED', '该报名已审核，不能重复审核');
+
+  // 通过前兜底查重：不得与其它「已通过」报名的队员重复（防止历史数据/并发造成的跨队）
+  if (decision === 'approved') {
+    const conflicts = memberConflicts(reg.members || [], reg.id, ['approved']);
+    if (conflicts.length) return fail(res, 409, 'MEMBER_CONFLICT', conflictMessage(conflicts) + '，请先驳回重复报名');
+  }
 
   reg.status = decision;
   reg.reviewComment = comment;
@@ -532,7 +705,7 @@ route('PUT', '/api/admin/registrations/:id/review', 'admin', async (req, res, pa
   }
 
   store.save();
-  ok(res, reg);
+  ok(res, regWithFiles(reg));
 });
 
 // ---- 新闻 / 公告管理 ----

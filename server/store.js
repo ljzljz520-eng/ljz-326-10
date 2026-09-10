@@ -9,6 +9,7 @@ const crypto = require('crypto');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
+const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const RULES_DIR = path.join(PUBLIC_DIR, 'rules');
 
@@ -34,6 +35,31 @@ const newId = (prefix) =>
   `${prefix}_${Date.now().toString(36)}${crypto.randomBytes(4).toString('hex')}`;
 
 /* ---------------- 种子数据 ---------------- */
+
+// 种子附件（演示报名材料，启动时写入 data/uploads/）
+const SEED_UPLOADS = [
+  {
+    id: 'up_seed_1',
+    userId: 'u_zhangsan',
+    filename: '安全责任书-疾风机器人队.txt',
+    createdAt: '2026-08-20T02:50:00.000Z',
+    content: `安全责任书（模拟附件）\n\n队伍：疾风机器人队（相扑机器人）\n全体队员已阅读并同意遵守赛事安全规范与竞赛规则。\n\n队员签名：张三 / 赵小川 / 孙晴\n指导老师：陈建国\n日期：2026-08-19\n`
+  },
+  {
+    id: 'up_seed_2',
+    userId: 'u_zhangsan',
+    filename: '器材清单-疾风机器人队.txt',
+    createdAt: '2026-08-20T02:52:00.000Z',
+    content: `器材清单（模拟附件）\n\n1. 主控板 ×1\n2. 直流减速电机 ×4\n3. 锂电池 7.4V ×2（电压 < 12V，符合安全规范）\n4. 灰度传感器 ×5\n5. 超声波模块 ×2\n`
+  },
+  {
+    id: 'up_seed_3',
+    userId: 'u_lisi',
+    filename: '安全责任书-智械工坊.txt',
+    createdAt: '2026-09-05T05:50:00.000Z',
+    content: `安全责任书（模拟附件）\n\n队伍：智械工坊（迷宫机器人）\n全体队员已阅读并同意遵守赛事安全规范。\n\n队员签名：李四 / 周舟\n指导老师：林敏\n日期：2026-09-04\n`
+  }
+];
 
 function seedData() {
   return {
@@ -92,7 +118,8 @@ function seedData() {
         ],
         advisor: '陈建国',
         contact: '13900000001',
-        materials: '已提交安全责任书与器材清单（模拟）。',
+        materials: '附件 1 为安全责任书，附件 2 为器材清单。',
+        attachments: ['up_seed_1', 'up_seed_2'],
         status: 'approved',
         reviewComment: '材料齐全，审核通过。',
         reviewedBy: 'admin',
@@ -111,7 +138,8 @@ function seedData() {
         ],
         advisor: '林敏',
         contact: '13900000002',
-        materials: '器材清单待补充，先提交占位。',
+        materials: '器材清单待补充，先提交安全责任书。',
+        attachments: ['up_seed_3'],
         status: 'pending',
         reviewComment: '',
         reviewedBy: null,
@@ -130,6 +158,7 @@ function seedData() {
         advisor: '',
         contact: '13900000003',
         materials: '仅一人组队，人数不足。',
+        attachments: [],
         status: 'rejected',
         reviewComment: '队伍人数不符合赛事规则（每队 2-5 人），请补充队员后重新提交。',
         reviewedBy: 'admin',
@@ -405,7 +434,16 @@ function seedData() {
         createdAt: '2026-09-09T12:00:00.000Z',
         handledAt: null
       }
-    ]
+    ],
+    uploads: SEED_UPLOADS.map((u) => ({
+      id: u.id,
+      userId: u.userId,
+      filename: u.filename,
+      storedName: `${u.id}.txt`,
+      size: Buffer.byteLength(u.content, 'utf8'),
+      mime: 'text/plain; charset=utf-8',
+      createdAt: u.createdAt
+    }))
   };
 }
 
@@ -456,12 +494,28 @@ function ensureRuleFiles() {
   }
 }
 
+function ensureSeedUploadFiles() {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+  for (const u of SEED_UPLOADS) {
+    const p = path.join(UPLOAD_DIR, `${u.id}.txt`);
+    if (!fs.existsSync(p)) fs.writeFileSync(p, u.content, 'utf8');
+  }
+}
+
 function load() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   ensureRuleFiles();
+  ensureSeedUploadFiles();
   if (fs.existsSync(DB_FILE)) {
     try {
       db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+      // 旧版本数据迁移：补充附件相关字段
+      let migrated = false;
+      if (!Array.isArray(db.uploads)) { db.uploads = []; migrated = true; }
+      for (const r of db.registrations || []) {
+        if (!Array.isArray(r.attachments)) { r.attachments = []; migrated = true; }
+      }
+      if (migrated) save();
       return;
     } catch (e) {
       const backup = `${DB_FILE}.corrupt-${Date.now()}`;
@@ -500,5 +554,6 @@ module.exports = {
   verifyPassword,
   publicUser,
   PUBLIC_DIR,
-  RULES_DIR
+  RULES_DIR,
+  UPLOAD_DIR
 };

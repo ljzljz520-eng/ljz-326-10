@@ -62,8 +62,14 @@
               <div style="margin-top:6px"><button type="button" class="btn sm ghost" id="btn-add-member">＋ 添加队员</button></div>
             </div>
             <div class="form-row">
-              <label>材料说明 / 补充信息</label>
-              <textarea name="materials" placeholder="安全责任书、器材清单等材料的说明（演示环境直接填写文字即可）"></textarea>
+              <label>报名附件（安全责任书、器材清单等，至少 1 个）<span class="req">*</span></label>
+              <input type="file" id="reg-files" multiple accept=".pdf,.png,.jpg,.jpeg,.gif,.zip,.txt,.doc,.docx,.xls,.xlsx">
+              <div id="attachment-list" style="margin-top:4px"></div>
+              <p class="muted" style="font-size:12.5px;margin:6px 0 0">支持 pdf / 图片 / zip / txt / Office 文档，单个不超过 5MB，最多 8 个；附件将供管理员审核时下载查阅。</p>
+            </div>
+            <div class="form-row">
+              <label>材料说明（补充，选填）</label>
+              <textarea name="materials" placeholder="对附件内容的补充说明，例如：附件 1 为安全责任书、附件 2 为器材清单"></textarea>
             </div>
             <button class="btn primary" type="submit" id="reg-submit-btn">提交报名</button>
           </form>

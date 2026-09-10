@@ -3,3 +3,4 @@ data/db.json
 data/.db.*.tmp
 data/*.corrupt-*
 .DS_Store
+data/uploads/

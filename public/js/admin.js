@@ -72,6 +72,7 @@ async function loadRegistrations() {
         <table class="data">
           <tr><th style="width:80px">联系方式</th><td>${esc(r.contact)}</td><th style="width:80px">指导老师</th><td>${esc(r.advisor || '—')}</td></tr>
           <tr><th>队员名单</th><td colspan="3">${r.members.map((m) => `${esc(m.name)}（${esc(m.role)}${m.studentId ? '·' + esc(m.studentId) : ''}）`).join('、')}</td></tr>
+          ${(r.attachmentFiles && r.attachmentFiles.length) ? `<tr><th>报名附件</th><td colspan="3">${fileLinksHtml(r.attachmentFiles)}</td></tr>` : '<tr><th>报名附件</th><td colspan="3"><span class="muted">无（旧数据可能未上传附件）</span></td></tr>'}
           ${r.materials ? `<tr><th>材料说明</th><td colspan="3">${esc(r.materials)}</td></tr>` : ''}
           ${r.reviewComment ? `<tr><th>审核意见</th><td colspan="3">${esc(r.reviewComment)}</td></tr>` : ''}
         </table>
@@ -85,6 +86,7 @@ async function loadRegistrations() {
 
     el.querySelectorAll('[data-approve]').forEach((b) => b.addEventListener('click', () => reviewReg(b.dataset.approve, 'approved')));
     el.querySelectorAll('[data-reject]').forEach((b) => b.addEventListener('click', () => reviewReg(b.dataset.reject, 'rejected')));
+    bindFileLinks(el);
   } catch (e) {
     el.innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`;
   }

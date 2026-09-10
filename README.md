@@ -63,9 +63,11 @@ npm start          # 或 node server/server.js
 | GET | `/api/me/profile` | 本人资料 |
 | PUT | `/api/me/profile` | 修改姓名/邮箱/手机 |
 | PUT | `/api/me/password` | 修改密码（校验原密码） |
-| POST | `/api/registrations` | 提交报名（队名/项目/2-5 名队员/联系方式/材料）；有待审核或已通过记录时 409 |
-| GET | `/api/registrations/me` | 本人报名列表（含状态、审核意见） |
-| PUT | `/api/registrations/:id` | 待审核状态下修改本人报名 |
+| POST | `/api/uploads` | 上传报名附件（base64，≤5MB，类型白名单），返回附件 id |
+| GET | `/api/uploads/:id/download` | 下载附件（本人或管理员） |
+| POST | `/api/registrations` | 提交报名（队名/项目/2-5 名队员且含 1 名队长/联系方式/≥1 个附件）；有待审核或已通过记录时 409 |
+| GET | `/api/registrations/me` | 本人报名列表（含状态、审核意见、附件清单） |
+| PUT | `/api/registrations/:id` | 待审核状态下修改本人报名（同样校验队长唯一、跨队查重与附件） |
 | GET | `/api/me/ranking` | 本人已通过队伍的排行榜成绩 |
 
 ### 管理员接口（需 admin 角色）
@@ -92,7 +94,8 @@ npm start          # 或 node server/server.js
 
 - 赛程与队伍介绍为只读模拟数据（种子数据），暂未提供后台维护接口；排行榜在报名通过后自动占位。
 - 规则文件为服务端 `public/rules/` 下的 TXT，经鉴权无关的下载接口下发（`Content-Disposition: attachment`）。
-- 报名附件在演示中以文字说明代替实际上传（`materials` 字段）。
+- 报名校验：每队 2-5 人且**必须恰好 1 名队长**（分工含“队长”）；同一队员（按学号/姓名）**不得跨队、跨项目**出现在其它待审核/已通过报名中（提交、修改、管理员通过时均拦截，409）。
+- 报名材料为**可审查附件**：成员先经 `/api/uploads` 上传文件（pdf/图片/zip/txt/Office，单个 ≤5MB，每报名最多 8 个），提交报名时引用附件 id；管理员在审核页可逐个下载查阅。`materials` 字段仅作补充文字说明。
 - 忘记密码采用「用户申请 → 管理员线下核实 → 后台标记处理/重置密码」的流程，未接入邮件短信。
 
 ## 目录结构
@@ -109,4 +112,5 @@ public/
   js/common.js index.js member.js admin.js
   rules/      # 可下载规则（首次启动生成）
 data/db.json  # 运行后生成
+data/uploads/ # 报名附件文件（运行后生成）
 ```

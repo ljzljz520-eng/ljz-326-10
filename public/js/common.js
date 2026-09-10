@@ -118,6 +118,48 @@ const STATUS_TEXT = {
 };
 const statusBadge = (s) => `<span class="status ${esc(s)}">${esc(STATUS_TEXT[s] || s)}</span>`;
 
+/* ---------- 附件下载（需带鉴权头，故用 fetch + blob） ---------- */
+function fmtSize(n) {
+  n = Number(n) || 0;
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+async function downloadFile(path, filename) {
+  const res = await fetch(path, { headers: { Authorization: `Bearer ${Auth.token}` } });
+  if (!res.ok) {
+    let msg = `下载失败（${res.status}）`;
+    try { const d = await res.json(); if (d && d.error) msg = d.error.message; } catch { /* 非 JSON */ }
+    throw { status: res.status, message: msg };
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || '附件';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+// 渲染附件链接 HTML（配合 bindFileLinks 使用）
+function fileLinksHtml(files) {
+  return (files || [])
+    .map((f) => `<a href="javascript:void 0" class="file-link" data-file="${esc(f.id)}" data-name="${esc(f.filename)}">📎 ${esc(f.filename)}</a><span class="muted" style="font-size:12px">（${fmtSize(f.size)}）</span>`)
+    .join('、');
+}
+
+// 为容器内 .file-link 绑定下载事件
+function bindFileLinks(container) {
+  container.querySelectorAll('.file-link[data-file]').forEach((a) =>
+    a.addEventListener('click', () =>
+      downloadFile(`/api/uploads/${a.dataset.file}/download`, a.dataset.name).catch((e) => toast(e.message, 'error'))
+    )
+  );
+}
+
 /* ---------- 导航 ---------- */
 function renderNav(active) {
   const slot = document.getElementById('nav-slot');
